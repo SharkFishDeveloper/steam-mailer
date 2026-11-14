@@ -1,0 +1,18 @@
+name: Update Steam Game Prices
+
+on:
+  schedule:
+    - cron: '30 0 * * *' # 6:00 AM IST
+
+  workflow_dispatch:
+
+jobs:
+  update-games:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Hit Update Games API to update prices
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            "https://myapp.vercel.app/api/scrap-game"
