@@ -15,4 +15,4 @@ jobs:
         run: |
           curl --fail --show-error --silent \
             --request POST \
-            "https://myapp.vercel.app/api/scrap-game"
+            "https://steam-mailer.vercel.app/api/scrap-games"

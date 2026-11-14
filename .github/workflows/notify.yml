@@ -1,5 +1,5 @@
 
-name: Steam Price Tracker
+name: Steam Price Tracker notification service
 
 on:
   schedule:
@@ -19,4 +19,4 @@ jobs:
           curl --fail --show-error --silent \
             --max-time 10 \
             --request POST \
-            "https://myapp.vercel.app/api/scrap-game"
+            "https://steam-mailer.vercel.app/api/check-user-update"

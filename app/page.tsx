@@ -18,6 +18,9 @@ const C = {
   lowGreen: "#beee11",
 };
 
+// route that handles the DELETE request (body: { app_id }). Change if yours differs.
+const DELETE_ENDPOINT = "/api/remove-game";
+
 /* ───────────── helpers ───────────── */
 const toNum = (s?: string) => {
   const n = parseFloat(String(s ?? "").replace(/[^0-9.]/g, ""));
@@ -133,7 +136,7 @@ function PriceTooltip({ active, payload, sym }: any) {
 }
 
 /* ───────────── game card (chart always visible) ───────────── */
-function GameCard({ game }: { game: GAME }) {
+function GameCard({ game, onDelete }: { game: GAME; onDelete: () => void }) {
   const s = useMemo(() => analyze(game), [game]);
 
   const t0 = s.chart[0].ts;
@@ -171,6 +174,31 @@ function GameCard({ game }: { game: GAME }) {
             Required price reached
           </span>
         )}
+        <button
+          onClick={onDelete}
+          aria-label={`Remove ${game.name}`}
+          title="Remove"
+          className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-sm transition-colors hover:bg-[#c6403a] focus:outline-none focus-visible:ring-2"
+          style={{ background: "#000000aa", color: C.text, ["--tw-ring-color" as any]: C.blue }}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M19 6l-1 14H6L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+          </svg>
+        </button>
       </div>
 
       <div className="space-y-3 p-3">
@@ -369,6 +397,105 @@ function AddGameModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   );
 }
 
+/* ───────────── remove confirmation ───────────── */
+function ConfirmRemoveModal({
+  name,
+  busy,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  name: string;
+  busy: boolean;
+  error: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !busy && onCancel();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onCancel, busy]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-6"
+      onClick={() => !busy && onCancel()}
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="remove-title"
+      aria-describedby="remove-desc"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm space-y-4 rounded-t-md p-5 sm:rounded-sm"
+        style={{ background: C.bg, border: `1px solid ${C.panelAlt}` }}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+            style={{ background: "#3b1f1f", color: "#e5736b" }}
+            aria-hidden="true"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 6h18" />
+              <path d="M8 6V4h8v2" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+            </svg>
+          </div>
+          <div>
+            <h2 id="remove-title" className="text-lg font-semibold leading-snug text-white">
+              Remove {name}?
+            </h2>
+            <p id="remove-desc" className="mt-1 text-sm" style={{ color: C.muted }}>
+              It will stop being tracked and its price history will be deleted. This can’t be undone.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <p className="rounded-sm px-3 py-2 text-sm" style={{ background: "#3b1f1f", color: "#f0a8a2" }}>
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            autoFocus
+            className="rounded-sm px-4 py-2 text-sm disabled:opacity-50"
+            style={{ background: "#ffffff1a", color: C.text }}
+          >
+            Keep it
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="rounded-sm px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ background: "#c6403a" }}
+          >
+            {busy ? "Removing…" : "Remove game"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ───────────── page ───────────── */
 export default function Home() {
   const [all_games, setAllGames] = useState<GAME[]>([]);
@@ -377,6 +504,9 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
+  const [toRemove, setToRemove] = useState<GAME | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeErr, setRemoveErr] = useState("");
 
   const loadGames = useCallback(async () => {
     try {
@@ -396,11 +526,43 @@ export default function Home() {
     loadGames();
   }, [loadGames]);
 
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 4000);
+  };
+
   const handleAdded = () => {
     setAdding(false);
-    setToast("Game added. It may take a moment to show up.");
+    showToast("Game added. It may take a moment to show up.");
     loadGames();
-    setTimeout(() => setToast(""), 4000);
+  };
+
+  const handleRemove = async () => {
+    if (!toRemove || removing) return;
+    setRemoving(true);
+    setRemoveErr("");
+    try {
+      const resp = await fetch(DELETE_ENDPOINT, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ app_id: toRemove.app_id }),
+      });
+      if (!resp.ok) {
+        let msg = `Request failed (${resp.status})`;
+        try {
+          const data = await resp.json();
+          msg = data?.error || data?.message || msg;
+        } catch {}
+        throw new Error(msg);
+      }
+      setAllGames((prev) => prev.filter((g) => g.app_id !== toRemove.app_id));
+      showToast(`${toRemove.name} removed`);
+      setToRemove(null);
+    } catch (e: any) {
+      setRemoveErr(e?.message ?? "Could not remove the game.");
+    } finally {
+      setRemoving(false);
+    }
   };
 
   const visible = useMemo(() => {
@@ -459,12 +621,29 @@ export default function Home() {
 
         <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {visible.map((g) => (
-            <GameCard key={g.app_id} game={g} />
+            <GameCard
+              key={g.app_id}
+              game={g}
+              onDelete={() => {
+                setRemoveErr("");
+                setToRemove(g);
+              }}
+            />
           ))}
         </div>
       </main>
 
       {adding && <AddGameModal onClose={() => setAdding(false)} onAdded={handleAdded} />}
+
+      {toRemove && (
+        <ConfirmRemoveModal
+          name={toRemove.name}
+          busy={removing}
+          error={removeErr}
+          onCancel={() => setToRemove(null)}
+          onConfirm={handleRemove}
+        />
+      )}
 
       {toast && (
         <div
