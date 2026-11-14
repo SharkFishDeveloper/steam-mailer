@@ -17,6 +17,5 @@ jobs:
       - name: Trigger Steam Price Alert API
         run: |
           curl --fail --show-error --silent \
-            --max-time 10 \
             --request POST \
             "https://steam-mailer.vercel.app/api/check-user-update"
