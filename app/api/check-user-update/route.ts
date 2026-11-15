@@ -20,19 +20,25 @@ export async function POST(req: NextRequest) {
         all_games.forEach((game) => {
             if (!game || game.prices.length === 0) return;
 
-            const currentPrice = Number(
-                game.prices[game.prices.length - 1].price
-            ) / 100;
+            const latestPrice = game.prices[game.prices.length - 1];
 
+            const currentPrice = Number(latestPrice.price) / 100;
             const targetPrice = Number(game.price_required);
 
-            let previousPrice = game.prices.length > 1
-                ? Number(game.prices[game.prices.length - 2].price) / 100
-                : null;
+            const today = new Date().toISOString().slice(0, 10);
+            const isSameDay = latestPrice.date.slice(0, 10) === today;
+
+            const previousPrice =
+                game.prices.length > 1
+                    ? Number(game.prices[game.prices.length - 2].price) / 100
+                    : null;
 
             const targetReached = currentPrice <= targetPrice;
 
-            const priceDropped = previousPrice !== null && currentPrice < previousPrice;
+            const priceDropped =
+                isSameDay &&
+                previousPrice !== null &&
+                currentPrice < previousPrice;
 
             if (targetReached || priceDropped) {
                 notifyForGames.push(game);
@@ -54,7 +60,7 @@ export async function POST(req: NextRequest) {
         const { data, error } = await resend.emails.send({
             from: "Steam Price Tracker <no-reply@codeheroes.online>",
             to: [process.env.ALERT_EMAIL!],
-            subject: `🎮 ${notifyForGames.length} Steam Game(s) Reached Your Target Price!`,
+            subject: `${notifyForGames.length} Steam Game(s) Reached Your Target Price!`,
             html: htmlTemplateForEmail
         });
 
